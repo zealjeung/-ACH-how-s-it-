@@ -1,0 +1,5 @@
+{
+  "name": "Crypto Daily Brief: $ACH",
+  "description": "An AI-powered daily summarizer for the latest news and updates regarding the Alchemy Pay token ($ACH), utilizing Google Search grounding for up-to-date information.",
+  "requestFramePermissions": []
+}
