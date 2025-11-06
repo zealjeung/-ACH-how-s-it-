@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { fetchNewsSummary } from './services/geminiService';
-import { fetchMarketChartData, fetchCoinDetails } from './services/coingeckoService';
-import { NewsSummary, MarketChartData, CoinDetails } from './types';
+import { fetchMarketChartData, fetchCoinDetails, fetchTopCoins } from './services/coingeckoService';
+import { NewsSummary, MarketChartData, CoinDetails, Coin } from './types';
 import LoadingSpinner from './components/LoadingSpinner';
 import SourceCard from './components/SourceCard';
 import ErrorMessage from './components/ErrorMessage';
@@ -22,6 +22,10 @@ const App: React.FC = () => {
   const [timeframe, setTimeframe] = useState<number>(7);
   const [initialFetchDone, setInitialFetchDone] = useState<boolean>(false);
 
+  const [topCoins, setTopCoins] = useState<Coin[]>([]);
+  const [selectedCoinId, setSelectedCoinId] = useState<string>('alchemy-pay');
+  const [isCoinListLoading, setIsCoinListLoading] = useState<boolean>(true);
+
   const timeframes = useMemo(() => [
     { label: '1D', days: 1 },
     { label: '7D', days: 7 },
@@ -29,12 +33,47 @@ const App: React.FC = () => {
     { label: '3M', days: 90 },
   ], []);
 
+  useEffect(() => {
+    const loadTopCoins = async () => {
+      setIsCoinListLoading(true);
+      try {
+        const coins = await fetchTopCoins();
+        // Ensure alchemy-pay is in the list as the default
+        if (!coins.some(c => c.id === 'alchemy-pay')) {
+            setTopCoins([{ id: 'alchemy-pay', name: 'Alchemy Pay', symbol: 'ach' }, ...coins]);
+        } else {
+            setTopCoins(coins);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load token list.');
+      } finally {
+        setIsCoinListLoading(false);
+      }
+    };
+    loadTopCoins();
+  }, []);
+
+  const selectedCoin = useMemo(() => {
+    return topCoins.find(c => c.id === selectedCoinId);
+  }, [topCoins, selectedCoinId]);
+
+  const handleCoinChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedCoinId(event.target.value);
+    setNews(null);
+    setChartData(null);
+    setCoinDetails(null);
+    setError(null);
+    setChartError(null);
+    setInitialFetchDone(false);
+  };
+
   const handleFetchChartData = useCallback(async (days: number) => {
+    if (!selectedCoin) return;
     setIsChartLoading(true);
     setChartError(null);
     setTimeframe(days);
     try {
-      const result = await fetchMarketChartData(days);
+      const result = await fetchMarketChartData(selectedCoin.id, days);
       setChartData(result);
     } catch (err) {
       setChartError(err instanceof Error ? err.message : 'An unknown error occurred while fetching chart data.');
@@ -42,9 +81,10 @@ const App: React.FC = () => {
     } finally {
       setIsChartLoading(false);
     }
-  }, []);
+  }, [selectedCoin]);
 
   const handleFetchInitialData = useCallback(async () => {
+    if (!selectedCoin) return;
     setIsLoading(true);
     setError(null);
     setNews(null);
@@ -55,9 +95,9 @@ const App: React.FC = () => {
 
     try {
       const [newsResult, chartResult, detailsResult] = await Promise.all([
-        fetchNewsSummary(),
-        fetchMarketChartData(timeframe),
-        fetchCoinDetails(),
+        fetchNewsSummary(selectedCoin.name, selectedCoin.symbol),
+        fetchMarketChartData(selectedCoin.id, timeframe),
+        fetchCoinDetails(selectedCoin.id),
       ]);
       setNews(newsResult);
       setChartData(chartResult);
@@ -68,7 +108,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [timeframe]);
+  }, [selectedCoin, timeframe]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-sans flex flex-col items-center p-4 sm:p-6 md:p-8">
@@ -82,14 +122,34 @@ const App: React.FC = () => {
           <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
             Crypto Daily Brief
           </h1>
-          <p className="mt-2 text-lg text-gray-400">Your AI-powered daily summary for <span className="font-bold text-cyan-400">$ACH</span> (Alchemy Pay)</p>
+          <p className="mt-2 text-lg text-gray-400">Your AI-powered daily summary for <span className="font-bold text-cyan-400">${selectedCoin?.symbol.toUpperCase()}</span> ({selectedCoin?.name})</p>
         </header>
 
         <main>
-          <div className="flex justify-center mb-8">
+           <div className="flex flex-col items-center justify-center mb-8 space-y-4">
+            <div className="w-full max-w-xs">
+                <label htmlFor="coin-select" className="block text-sm font-medium text-gray-400 mb-2 text-center">Select a Token</label>
+                <select 
+                    id="coin-select"
+                    value={selectedCoinId}
+                    onChange={handleCoinChange}
+                    disabled={isCoinListLoading || isLoading}
+                    className="block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 text-white focus:outline-none focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isCoinListLoading ? (
+                        <option>Loading tokens...</option>
+                    ) : (
+                        topCoins.map(coin => (
+                            <option key={coin.id} value={coin.id}>
+                                {coin.name} ({coin.symbol.toUpperCase()})
+                            </option>
+                        ))
+                    )}
+                </select>
+            </div>
             <button
               onClick={handleFetchInitialData}
-              disabled={isLoading}
+              disabled={isLoading || !selectedCoin}
               className="px-8 py-3 bg-cyan-500 text-white font-bold rounded-full shadow-lg hover:bg-cyan-600 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-cyan-500/50"
             >
               {isLoading ? 'Loading...' : 'Get Latest Brief'}

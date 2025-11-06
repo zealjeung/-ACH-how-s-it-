@@ -25,3 +25,9 @@ export interface CoinDetails {
     blockchain_site: string[];
   };
 }
+
+export interface Coin {
+  id: string;
+  symbol: string;
+  name: string;
+}

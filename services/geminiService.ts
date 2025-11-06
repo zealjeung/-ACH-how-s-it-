@@ -10,13 +10,12 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-const PROMPT = "Summarize to me daily whats the latest with the Token $ACH alchemy pay";
-
-export const fetchNewsSummary = async (): Promise<NewsSummary> => {
+export const fetchNewsSummary = async (tokenName: string, tokenSymbol: string): Promise<NewsSummary> => {
+  const prompt = `Summarize to me daily what's the latest with the Token $${tokenSymbol.toUpperCase()} ${tokenName}`;
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: PROMPT,
+      contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
       },
